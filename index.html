@@ -1,406 +1,371 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GitHub Contributions Heatmap</title>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 20px;
-        background-color: #ffffff;
-      }
 
-      .heatmap-container {
-        max-width: 1000px;
-        margin: 20px auto;
-        padding: 20px;
-        background: #ffffff;
-        border-radius: 6px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-      }
-
-      .contribution-graph {
-        display: grid;
-        grid-template-columns: repeat(53, 1fr);
-        gap: 3px;
-        padding: 10px;
-      }
-
-      .day {
-        width: 10px;
-        height: 10px;
-        border-radius: 2px;
-        cursor: pointer;
-        transition: transform 0.1s ease;
-      }
-
-      .day:hover {
-        transform: scale(1.2);
-      }
-
-      .tooltip {
-        position: absolute;
-        background: #24292e;
-        color: #ffffff;
-        padding: 5px 10px;
-        border-radius: 3px;
-        font-size: 12px;
-        pointer-events: none;
-        display: none;
-      }
-
-      .legend {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 5px;
-        margin-top: 10px;
-        font-size: 12px;
-      }
-
-      .legend-item {
-        display: flex;
-        align-items: center;
-        margin-left: 8px;
-      }
-
-      .legend-box {
-        width: 10px;
-        height: 10px;
-        border-radius: 2px;
-        margin-right: 4px;
-      }
-      .heatmap-wrapper {
-        position: relative;
-        padding: 20px 0 0 30px; /* Space for labels */
-      }
-
-      .months-legend {
-        display: flex;
-        justify-content: space-between;
-        padding-left: 30px;
-        margin-bottom: 5px;
-        font-size: 12px;
-        color: #586069;
-      }
-
-      .weekdays-legend {
-        position: absolute;
-        left: 0;
-        top: 20px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-around;
-        height: calc(100% - 20px);
-        font-size: 12px;
-        color: #586069;
-      }
-
-      /* Loading animation styles */
-      .loading-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(255, 255, 255, 0.9);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-      }
-
-      .loading-spinner {
-        width: 50px;
-        height: 50px;
-        border: 3px solid #f3f3f3;
-        border-top: 3px solid #40c463;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-      }
-
-      @keyframes spin {
-        0% {
-          transform: rotate(0deg);
-        }
-        100% {
-          transform: rotate(360deg);
-        }
-      }
-
-      /* Adjust container to accommodate labels */
-      .heatmap-container {
-        max-width: 1100px; /* Increased to accommodate labels */
-      }
-
-      .contribution-graph {
-        grid-template-columns: repeat(53, 1fr);
-        gap: 3px;
-        padding: 10px;
-      }
-      .contribution-graph {
-        display: grid;
-        gap: 3px;
-        padding: 10px;
-        grid-auto-flow: column; /* Make grid flow by column */
-        grid-template-rows: repeat(
-          7,
-          1fr
-        ); /* 7 rows for each day of the week */
-      }
-
-      .day {
-        width: 10px;
-        height: 10px;
-        border-radius: 2px;
-        cursor: pointer;
-        transition: transform 0.1s ease;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="heatmap-container">
-      <h2>Contribution Activity</h2>
-      <div class="heatmap-wrapper">
-        <div class="months-legend" id="months"></div>
-        <div class="weekdays-legend">
-          <span>Sun</span>
-          <span>Wed</span>
-          <span>Sat</span>
-        </div>
-        <div id="heatmap" class="contribution-graph">
-          <div class="loading-overlay">
-            <div class="loading-spinner"></div>
-          </div>
-        </div>
-      </div>
-      <div class="legend">
-        <span>Less</span>
-        <div class="legend-item">
-          <div class="legend-box" style="background-color: #ebedf0"></div>
-        </div>
-        <div class="legend-item">
-          <div class="legend-box" style="background-color: #9be9a8"></div>
-        </div>
-        <div class="legend-item">
-          <div class="legend-box" style="background-color: #40c463"></div>
-        </div>
-        <div class="legend-item">
-          <div class="legend-box" style="background-color: #30a14e"></div>
-        </div>
-        <div class="legend-item">
-          <div class="legend-box" style="background-color: #216e39"></div>
-        </div>
-        <span>More</span>
-      </div>
-    </div>
-    <div id="tooltip" class="tooltip"></div>
-
-    <script>
-      const username = "lucasfepe"; // Replace with your GitHub username
-      const token = "";
-      // process.env.GITHUB_TOKEN; // Use environment variable for token
-
-      async function getContributionData() {
-        const endDate = new Date();
-        const startDate = new Date(endDate);
-        startDate.setFullYear(endDate.getFullYear() - 1);
-        
-
-        const contributionData = new Map();
-
-        try {
-          const headers = {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/vnd.github.v3+json",
-          };
-
-          // Get user's repositories
-          const reposResponse = await fetch(
-            `https://api.github.com/users/${username}/repos`,
-            { headers }
-          );
-          const repos = await reposResponse.json();
-
-          // Get commits for each repository
-          for (const repo of repos) {
-            const commitsResponse = await fetch(
-              `https://api.github.com/repos/${username}/${
-                repo.name
-              }/commits?author=${username}&since=${startDate.toISOString()}`,
-              { headers }
-            );
-            const commits = await commitsResponse.json();
-
-            if (Array.isArray(commits)) {
-              commits.forEach((commit) => {
-                const date = commit.commit.author.date.split("T")[0];
-                contributionData.set(
-                  date,
-                  (contributionData.get(date) || 0) + 1
-                );
-              });
-            }
-          }
-
-          return contributionData;
-        } catch (error) {
-          console.error("Error fetching contribution data:", error);
-          return new Map();
-        }
-      }
-
-      function getContributionColor(count) {
-        if (count === 0) return "#ebedf0";
-        if (count <= 3) return "#9be9a8";
-        if (count <= 6) return "#40c463";
-        if (count <= 9) return "#30a14e";
-        return "#216e39";
-      }
-
-      function createMonthsLegend(startDate, endDate) {
-        const months = [];
-        const currentDate = new Date(startDate);
-        const monthsContainer = document.getElementById("months");
-        monthsContainer.innerHTML = "";
-
-        while (currentDate <= endDate) {
-          const month = currentDate.toLocaleString("default", {
-            month: "short",
-          });
-          if (!months.includes(month)) {
-            months.push(month);
-            const monthSpan = document.createElement("span");
-            monthSpan.textContent = month;
-            monthsContainer.appendChild(monthSpan);
-          }
-          currentDate.setDate(currentDate.getDate() + 7);
-        }
-      }
-
-      function showLoading(show) {
-        const loadingOverlay = document.querySelector(".loading-overlay");
-        if (show) {
-          loadingOverlay.style.display = "flex";
-        } else {
-          loadingOverlay.style.display = "none";
-        }
-      }
-
-      async function init() {
-        showLoading(true);
-        try {
-          const data = await getContributionData();
-          const endDate = new Date();
-          const startDate = new Date(endDate);
-          startDate.setFullYear(endDate.getFullYear() - 1);
-
-          createMonthsLegend(startDate, endDate);
-          createHeatmap(data);
-        } catch (error) {
-          console.error("Error initializing heatmap:", error);
-          document.getElementById("heatmap").innerHTML =
-            '<p style="color: red; text-align: center;">Error loading contribution data</p>';
-        } finally {
-          showLoading(false);
-        }
-      }
-
-      function createHeatmap(contributionData) {
-        const heatmapContainer = document.getElementById("heatmap");
-        const tooltip = document.getElementById("tooltip");
-        const endDate = new Date();
-        const startDate = new Date(endDate);
-        // Change this line in both the createMonthsLegend and createHeatmap functions
-startDate.setMonth(endDate.getMonth() - 6); // Instead of setFullYear(endDate.getFullYear() - 1)
-
-
-        // Adjust start date to begin on a Sunday
-        // startDate.setDate(startDate.getDate() - startDate.getDay());
-          // Ensure we start on a Sunday by moving back to the previous Sunday
-    while (startDate.getDay() !== 0) {
-        startDate.setDate(startDate.getDate() + 1);
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GitHub Contribution Activity</title>
+  <style>
+    /* Base styles */
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #ffffff;
     }
 
-        // Clear previous content
-        heatmapContainer.innerHTML = "";
+    /* Container styles */
+    .heatmap-container {
+      margin: 20px auto;
+      padding: 20px;
+      background: #ffffff;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+      max-width: 375px;
+    }
 
-        // Add CSS to ensure proper column alignment
-        const style = document.createElement("style");
-        style.textContent = `
-        .calendar__day:nth-child(7n + 1) {
-            grid-column: 1;
+    /* Heatmap layout */
+    .heatmap-wrapper {
+      position: relative;
+      padding: 20px 0 0 30px;
+    }
+
+    .contribution-graph {
+      display: grid;
+      column-gap: 3px;
+      row-gap: 3px;
+      padding: 10px;
+      grid-auto-flow: column;
+      grid-template-rows: repeat(7, 1fr);
+      /* min-height: 128px; */
+      position: relative;
+    }
+
+
+    /* Day cells */
+    .day {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+
+    .day:hover {
+      transform: scale(1.2);
+    }
+
+    /* Legend styles */
+    .months-legend {
+      display: flex;
+      justify-content: space-between;
+      padding-left: 30px;
+      margin-bottom: 5px;
+      font-size: 12px;
+      color: #586069;
+    }
+
+    .weekdays-legend {
+      position: absolute;
+      left: 0;
+      top: 45px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 92px;
+      font-size: 12px;
+      color: #586069;
+      padding: 2px 0;
+      text-align: right;
+    }
+
+
+    .legend {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 5px;
+      margin-top: 10px;
+      font-size: 12px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin-left: 8px;
+    }
+
+    .legend-box {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      margin-right: 4px;
+    }
+
+    /* Loading animation */
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.9);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #40c463;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Tooltip */
+    .tooltip {
+      position: absolute;
+      background: #24292e;
+      color: #ffffff;
+      padding: 5px 10px;
+      border-radius: 3px;
+      font-size: 12px;
+      pointer-events: none;
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="heatmap-container">
+    <h2>GitHub Contribution Activity</h2>
+    <div class="heatmap-wrapper">
+      <div class="months-legend" id="months"></div>
+      <div class="weekdays-legend">
+        <span>Sun</span>
+        <span>Wed</span>
+        <span>Sat</span>
+      </div>
+      <div id="heatmap" class="contribution-graph">
+        <div class="loading-overlay">
+          <div class="loading-spinner"></div>
+        </div>
+      </div>
+    </div>
+    <div class="legend">
+      <span>Less</span>
+      <div class="legend-item">
+        <div class="legend-box" style="background-color: #ebedf0"></div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-box" style="background-color: #9be9a8"></div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-box" style="background-color: #40c463"></div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-box" style="background-color: #30a14e"></div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-box" style="background-color: #216e39"></div>
+      </div>
+      <span>More</span>
+    </div>
+  </div>
+  <div id="tooltip" class="tooltip"></div>
+
+  <script>
+    const CONSTANTS = {
+      username: "lucasfepe",
+      colors: {
+        level0: "#ebedf0",
+        level1: "#9be9a8",
+        level2: "#40c463",
+        level3: "#30a14e",
+        level4: "#216e39"
+      }
+    };
+
+    function getContributionColor(count) {
+      if (count === 0) return CONSTANTS.colors.level0;
+      if (count <= 3) return CONSTANTS.colors.level1;
+      if (count <= 6) return CONSTANTS.colors.level2;
+      if (count <= 9) return CONSTANTS.colors.level3;
+      return CONSTANTS.colors.level4;
+    }
+
+    async function getContributionData() {
+      // Check if cached data exists and is from today
+      const cached = localStorage.getItem('githubContributions');
+      if (cached) {
+
+        const { timestamp, data } = JSON.parse(cached);
+        const isToday = new Date(timestamp).toDateString() === new Date().toDateString();
+
+        if (isToday) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          // Convert the cached data back to a Map
+          return new Map(Object.entries(data));
         }
-    `;
-        document.head.appendChild(style);
+      }
 
-        // Create array of week columns
-        let weeks = [];
-        let currentWeek = [];
+      const endDate = new Date();
+      const startDate = new Date(endDate);
+      startDate.setMonth(endDate.getMonth() - 6);
 
-        for (
-          let d = new Date(startDate);
-          d <= endDate;
-          d.setDate(d.getDate() + 1)
-        ) {
-          const dateStr = d.toISOString().split("T")[0];
-          const count = contributionData.get(dateStr) || 0;
+      const contributionData = new Map();
 
-          const dayElement = document.createElement("div");
-          dayElement.className = "day";
-          dayElement.style.backgroundColor = getContributionColor(count);
-          console.log(dateStr);
-          // Add hover events
-          dayElement.addEventListener("mouseover", (e) => {
-            const date = new Date(dateStr).toLocaleDateString();
-            
-            tooltip.innerHTML = `${count} contributions on ${dateStr}`;
-            tooltip.style.display = "block";
-            tooltip.style.left = `${e.pageX + 10}px`;
-            tooltip.style.top = `${e.pageY + 10}px`;
-          });
+      try {
+        const headers = {
+          Accept: "application/vnd.github.v3+json"
+        };
 
-          dayElement.addEventListener("mouseout", () => {
-            tooltip.style.display = "none";
-          });
+        const reposResponse = await fetch(
+          `https://api.github.com/users/${CONSTANTS.username}/repos`,
+          { headers }
+        );
+        const repos = await reposResponse.json();
 
-          currentWeek.push(dayElement);
+        for (const repo of repos) {
+          const commitsResponse = await fetch(
+            `https://api.github.com/repos/${CONSTANTS.username}/${repo.name}/commits?author=${CONSTANTS.username}&since=${startDate.toISOString()}`,
+            { headers }
+          );
+          const commits = await commitsResponse.json();
 
-          // Start a new week when we have 7 days
-          if (currentWeek.length === 7) {
-            weeks.push(currentWeek);
-            currentWeek = [];
+          if (Array.isArray(commits)) {
+            commits.forEach((commit) => {
+              const date = commit.commit.author.date.split("T")[0];
+              contributionData.set(date, (contributionData.get(date) || 0) + 1);
+            });
           }
         }
 
-        // Add any remaining days to the last week
-        if (currentWeek.length > 0) {
-          weeks.push(currentWeek);
+        // Cache the response with timestamp
+        localStorage.setItem('githubContributions', JSON.stringify({
+          timestamp: new Date().toISOString(),
+          data: Object.fromEntries(contributionData)
+        }));
+
+        return contributionData;
+      } catch (error) {
+        console.error("Error fetching contribution data:", error);
+        return new Map();
+      }
+    }
+
+    function createMonthsLegend(startDate, endDate) {
+      const months = [];
+      const currentDate = new Date(startDate);
+      const monthsContainer = document.getElementById("months");
+      monthsContainer.innerHTML = "";
+
+      while (currentDate <= endDate) {
+        const month = currentDate.toLocaleString("default", { month: "short" });
+        if (!months.includes(month)) {
+          months.push(month);
+          const monthSpan = document.createElement("span");
+          monthSpan.textContent = month;
+          monthsContainer.appendChild(monthSpan);
         }
+        currentDate.setDate(currentDate.getDate() + 7);
+      }
+    }
 
-        // Update the CSS Grid layout
-        heatmapContainer.style.gridTemplateColumns = `repeat(${weeks.length}, 1fr)`;
-        heatmapContainer.style.gridTemplateRows = "repeat(7, 1fr)";
-        heatmapContainer.style.gridAutoFlow = "column";
+    function showLoading(show) {
+      const loadingOverlay = document.querySelector(".loading-overlay");
+      loadingOverlay.style.display = show ? "flex" : "none";
+    }
 
-        // Add days to the container in the correct order
-        weeks.forEach((week) => {
-          week.forEach((day) => {
-            heatmapContainer.appendChild(day);
-          });
+    function createHeatmap(contributionData) {
+      const heatmapContainer = document.getElementById("heatmap");
+      const tooltip = document.getElementById("tooltip");
+      const endDate = new Date();
+      const startDate = new Date(endDate);
+      startDate.setMonth(endDate.getMonth() - 6);
+
+      while (startDate.getDay() !== 0) {
+        startDate.setDate(startDate.getDate() + 1);
+      }
+
+      heatmapContainer.innerHTML = "";
+
+      let weeks = [];
+      let currentWeek = [];
+
+      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split("T")[0];
+        const count = contributionData.get(dateStr) || 0;
+
+        const dayElement = document.createElement("div");
+        dayElement.className = "day";
+        dayElement.style.backgroundColor = getContributionColor(count);
+
+        dayElement.addEventListener("mouseover", (e) => {
+          tooltip.innerHTML = `${count} contributions on ${dateStr}`;
+          tooltip.style.display = "block";
+          tooltip.style.left = `${e.pageX + 10}px`;
+          tooltip.style.top = `${e.pageY + 10}px`;
         });
+
+        dayElement.addEventListener("mouseout", () => {
+          tooltip.style.display = "none";
+        });
+
+        currentWeek.push(dayElement);
+
+        if (currentWeek.length === 7) {
+          weeks.push(currentWeek);
+          currentWeek = [];
+        }
       }
 
-      init();
+      if (currentWeek.length > 0) {
+        weeks.push(currentWeek);
+      }
 
-      // Initialize
-      async function init() {
+      heatmapContainer.style.gridTemplateColumns = `repeat(${weeks.length}, 1fr)`;
+
+      weeks.forEach((week) => {
+        week.forEach((day) => {
+          heatmapContainer.appendChild(day);
+        });
+      });
+    }
+
+    async function init() {
+      showLoading(true);
+      try {
         const data = await getContributionData();
-        createHeatmap(data);
-      }
+        const endDate = new Date();
+        const startDate = new Date(endDate);
+        startDate.setMonth(endDate.getMonth() - 6);
 
-      init();
-    </script>
-  </body>
+        createMonthsLegend(startDate, endDate);
+        createHeatmap(data);
+      } catch (error) {
+        console.error("Error initializing heatmap:", error);
+        document.getElementById("heatmap").innerHTML =
+          '<p style="color: red; text-align: center;">Error loading contribution data</p>';
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    init();
+  </script>
+</body>
+
 </html>
