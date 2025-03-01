@@ -13,6 +13,29 @@
       background-color: #ffffff;
     }
 
+    .animation-controls {
+      margin: 20px 0;
+      padding: 15px;
+      background: #f6f8fa;
+      border-radius: 6px;
+    }
+
+    .control-group {
+      margin: 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .control-group label {
+      min-width: 120px;
+    }
+
+    .control-group input[type="range"] {
+      flex: 1;
+      max-width: 200px;
+    }
+
     /* Container styles */
     .heatmap-container {
       margin: 20px auto;
@@ -27,6 +50,7 @@
     .heatmap-wrapper {
       position: relative;
       padding: 20px 0 0 30px;
+      min-height: 128px;
     }
 
     .contribution-graph {
@@ -37,6 +61,7 @@
       grid-auto-flow: column;
       grid-template-rows: repeat(7, 1fr);
       /* min-height: 128px; */
+      /* Fixed height to prevent shift */
       position: relative;
     }
 
@@ -48,6 +73,8 @@
       border-radius: 2px;
       cursor: pointer;
       transition: transform 0.1s ease;
+      background-color: #ebedf0;
+      /* Default color for placeholder */
     }
 
     .day:hover {
@@ -114,6 +141,18 @@
       align-items: center;
       z-index: 1000;
     }
+
+    :root {
+      --wave-start: 35%;
+    }
+
+    /* Add this to your CSS */
+
+
+    .day.loading {
+      animation: loadingWave var(--wave-duration, 1s) ease-in-out infinite;
+    }
+
 
     .loading-spinner {
       width: 50px;
@@ -183,10 +222,86 @@
       </div>
       <span>More</span>
     </div>
+    <div class="animation-controls">
+      <div class="control-group">
+        <label for="wave-duration">Wave Duration (s):</label>
+        <input type="range" id="wave-duration" min="0.1" max="3" step="0.1" value="1">
+        <span id="wave-duration-value">1s</span>
+      </div>
+
+      <div class="control-group">
+        <label for="wave-spread">Wave Spread (%):</label>
+        <input type="range" id="wave-spread" min="5" max="45" step="5" value="30">
+      </div>
+
+      <div class="control-group">
+        <label for="wave-delay">Wave Speed:</label>
+        <input type="range" id="wave-delay" min="0.001" max="0.01" step="0.001" value="0.003">
+      </div>
+    </div>
   </div>
   <div id="tooltip" class="tooltip"></div>
 
+
   <script>
+    class AnimationController {
+      constructor() {
+        this.root = document.documentElement;
+        this.initializeControls();
+      }
+
+      initializeControls() {
+        // Wave Duration Control
+        const durationInput = document.getElementById('wave-duration');
+        const durationValue = document.getElementById('wave-duration-value');
+        durationInput.addEventListener('input', (e) => {
+          const value = e.target.value;
+          durationValue.textContent = `${value}s`;
+          this.updateAnimation('--wave-duration', `${value}s`);
+        });
+
+        // Wave Spread Control
+        const spreadInput = document.getElementById('wave-spread');
+        const spreadValue = document.getElementById('wave-spread-value');
+        spreadInput.addEventListener('input', (e) => {
+          const value = parseInt(e.target.value);
+          spreadValue.textContent = `${2 * value}%`;
+          this.updateWaveSpread(value);
+        });
+
+        // Wave Delay Control
+        const delayInput = document.getElementById('wave-delay');
+        const delayValue = document.getElementById('wave-delay-value');
+        delayInput.addEventListener('input', (e) => {
+          const value = e.target.value;
+          // delayValue.textContent = value;
+          this.updateDelayMultiplier(.01 - value);
+        });
+      }
+
+
+      updateAnimation(property, value) {
+        this.root.style.setProperty(property, value);
+      }
+
+      updateWaveSpread(spread) {
+        // const start = 50 - spread;
+        // const end = 50 + spread;
+        const start = 10;
+        const end = 90;
+        this.updateAnimation('--wave-start', `${start}%`);
+        this.updateAnimation('--wave-end', `${end}%`);
+      }
+
+      updateDelayMultiplier(multiplier) {
+        // Update all existing day elements
+        document.querySelectorAll('.day.loading').forEach((dayElement, index) => {
+          dayElement.style.animationDelay = `${index * multiplier}s`;
+        });
+        // Store the current multiplier for future elements
+        this.root.style.setProperty('--wave-delay-multiplier', multiplier);
+      }
+    }
     const CONSTANTS = {
       username: "lucasfepe",
       colors: {
@@ -197,6 +312,100 @@
         level4: "#216e39"
       }
     };
+
+    function createEmptyHeatmap() {
+      const heatmapContainer = document.getElementById("heatmap");
+      const tooltip = document.getElementById("tooltip");
+      const endDate = new Date();
+      const startDate = new Date(endDate);
+      startDate.setMonth(endDate.getMonth() - 6);
+
+      while (startDate.getDay() !== 0) {
+        startDate.setDate(startDate.getDate() + 1);
+      }
+
+      heatmapContainer.innerHTML = "";
+
+      let weeks = [];
+      let currentWeek = [];
+
+      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split("T")[0];
+
+        const dayElement = document.createElement("div");
+        dayElement.className = "day loading";
+        dayElement.dataset.date = dateStr; // Store date for later update
+
+        // Add staggered animation delay based on date
+        const daysFromStart = Math.floor((d - startDate) / (1000 * 60 * 60 * 24));
+        dayElement.style.animationDelay = `${daysFromStart * 0.003}s`;
+
+        dayElement.addEventListener("mouseover", (e) => {
+          tooltip.innerHTML = "Loading...";
+          tooltip.style.display = "block";
+          tooltip.style.left = `${e.pageX + 10}px`;
+          tooltip.style.top = `${e.pageY + 10}px`;
+        });
+
+        dayElement.addEventListener("mouseout", () => {
+          tooltip.style.display = "none";
+        });
+        const delayMultiplier = getComputedStyle(document.documentElement)
+          .getPropertyValue('--wave-delay-multiplier') || '0.003';
+
+        dayElement.style.animationDelay = `${daysFromStart * delayMultiplier}s`;
+
+
+        currentWeek.push(dayElement);
+
+        if (currentWeek.length === 7) {
+          weeks.push(currentWeek);
+          currentWeek = [];
+        }
+      }
+
+      if (currentWeek.length > 0) {
+        weeks.push(currentWeek);
+      }
+
+      heatmapContainer.style.gridTemplateColumns = `repeat(${weeks.length}, 1fr)`;
+
+      weeks.forEach((week) => {
+        week.forEach((day) => {
+          heatmapContainer.appendChild(day);
+        });
+      });
+
+
+      return { startDate, endDate };
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      const animationController = new AnimationController();
+      init();
+    });
+    function updateHeatmapWithData(contributionData) {
+      const heatmapContainer = document.getElementById("heatmap");
+      const tooltip = document.getElementById("tooltip");
+
+      // Update each day's color and tooltip
+      heatmapContainer.querySelectorAll('.day').forEach(dayElement => {
+        const dateStr = dayElement.dataset.date;
+        const count = contributionData.get(dateStr) || 0;
+
+        dayElement.classList.remove('loading');
+        dayElement.style.removeProperty('animation-delay');
+
+        dayElement.style.backgroundColor = getContributionColor(count);
+
+        // Update tooltip content
+        dayElement.onmouseover = (e) => {
+          tooltip.innerHTML = `${count} contributions on ${dateStr}`;
+          tooltip.style.display = "block";
+          tooltip.style.left = `${e.pageX + 10}px`;
+          tooltip.style.top = `${e.pageY + 10}px`;
+        };
+      });
+    }
 
     function getContributionColor(count) {
       if (count === 0) return CONSTANTS.colors.level0;
@@ -215,7 +424,7 @@
         const isToday = new Date(timestamp).toDateString() === new Date().toDateString();
 
         if (isToday) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, 30000));
           // Convert the cached data back to a Map
           return new Map(Object.entries(data));
         }
@@ -266,6 +475,39 @@
       }
     }
 
+    document.addEventListener('DOMContentLoaded', function () {
+      // Get the initial value from the input
+      const waveSpreadInput = document.getElementById('wave-spread');
+      const initialSpread = parseInt(waveSpreadInput.value);
+
+      // Run the animation update with initial values
+      updateWaveAnimation(initialSpread, 100 - initialSpread);
+
+      // Add the input event listener for future changes
+      waveSpreadInput.addEventListener('input', function () {
+        const spread = parseInt(this.value);
+        updateWaveAnimation(50 - spread, 50 + spread);
+      });
+    });
+    function updateWaveAnimation(startPercent, endPercent) {
+      const style = document.createElement('style');
+      const keyframes = `
+    @keyframes loadingWave {
+      0% { background-color: #ebedf0; }
+      ${startPercent}% { background-color: #ebedf0; }
+      50% { background-color: #9c9c9c; }
+      ${endPercent}% { background-color: #ebedf0; }
+      100% { background-color: #ebedf0; }
+    }
+  `;
+
+      style.textContent = keyframes;
+      // Remove any previous animation
+      document.querySelectorAll('style[data-wave-animation]').forEach(el => el.remove());
+
+      style.setAttribute('data-wave-animation', '');
+      document.head.appendChild(style);
+    }
     function createMonthsLegend(startDate, endDate) {
       const months = [];
       const currentDate = new Date(startDate);
@@ -288,7 +530,12 @@
       const loadingOverlay = document.querySelector(".loading-overlay");
       loadingOverlay.style.display = show ? "flex" : "none";
     }
-
+    const waveSpreadInput = document.getElementById('wave-spread');
+    waveSpreadInput.addEventListener('input', function () {
+      const spread = parseInt(this.value);
+      // updateWaveAnimation(50 - spread, 50 + spread);
+      updateWaveAnimation(45, 55);
+    });
     function createHeatmap(contributionData) {
       const heatmapContainer = document.getElementById("heatmap");
       const tooltip = document.getElementById("tooltip");
@@ -346,21 +593,16 @@
     }
 
     async function init() {
-      showLoading(true);
+      const { startDate, endDate } = createEmptyHeatmap();
+      createMonthsLegend(startDate, endDate);
+
       try {
         const data = await getContributionData();
-        const endDate = new Date();
-        const startDate = new Date(endDate);
-        startDate.setMonth(endDate.getMonth() - 6);
-
-        createMonthsLegend(startDate, endDate);
-        createHeatmap(data);
+        updateHeatmapWithData(data);
       } catch (error) {
         console.error("Error initializing heatmap:", error);
         document.getElementById("heatmap").innerHTML =
           '<p style="color: red; text-align: center;">Error loading contribution data</p>';
-      } finally {
-        showLoading(false);
       }
     }
 
